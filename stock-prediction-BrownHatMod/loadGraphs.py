@@ -16,9 +16,9 @@ params = {
 BATCH_SIZE = params["batch_size"]
 
 
-mainDir = "E:/ashwinWork/RNN_StockPrediction/stock-prediction-BrownHatMod/reinforcement/MU/results/"
+mainDir = "./backtest/TVIX/"
 # figTrain = 'OHLCO-2020-06-16_HTZ-huber_loss-adam-CuDNNLSTM-seq-70-step-1-layers-3-units-256_LossEpoch.pickle'
-figTest = 'reinforcement.pickle'
+figTest = 'BACKTEST-predClose-nextOpen-OHLCO-0.3--2020-06-20_TVIX-huber_loss-adam-CuDNNLSTM-seq-70-step-1-layers-3-units-256.pickle'
 
 
 # figTrain = pickle.load(open(mainDir + figTrain, 'rb'))

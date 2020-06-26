@@ -56,15 +56,26 @@ MOD_SETTING = f"OHLCO-{TEST_SIZE}-"
 ticker = "TVIX" # HTZ, IZEA, DAL, NE
 ticker_data_filename = os.path.join("data", f"{ticker}_{date_now}.csv")
 # model name to save, making it as unique as possible based on parameters
-date_old = "2020-06-19"
-# model_name = f"{MOD_SETTING}-{date_old}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
-model_name = f"{MOD_SETTING}-{date_now}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
+date_old = "2020-06-20"
+model_name = f"{MOD_SETTING}-{date_old}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
+# model_name = f"{MOD_SETTING}-{date_now}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
 # model_name = f"{MOD_SETTING}-2020-06-17_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
-
 
 # EMA Settings
 EMA_SAMPLE_LENGTH = 9
 startWindow = 0
+
+# Backtest params
+COMMISSION = 0.01
+MARGIN = 1.0
+DECISIONTYPE = 0
+
+# if DECISIONTYPE == 0:
+#     delta = 100 * (predClose - nextOpen) / nextOpen
+# elif DECISIONTYPE == 1:
+#     delta = 100 * (predClose - prevClose) / prevClose
+# elif DECISIONTYPE == 2:
+#     delta = 100 * (predClose - prevPredClose) / prevPredClose
 
 if BIDIRECTIONAL:
     model_name += "-b"
