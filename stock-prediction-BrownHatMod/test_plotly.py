@@ -174,7 +174,7 @@ if __name__ == "__main__":
     # load the data
     # data = load_data(ticker, N_STEPS, lookup_step=LOOKUP_STEP, test_size=TEST_SIZE,
     #                 feature_columns=FEATURE_COLUMNS, shuffle=False)
-    data, processed = backtest.load_data(ticker, N_STEPS, True, lookup_step=LOOKUP_STEP, feature_columns=FEATURE_COLUMNS)
+    data, processed = backtest.load_data(ticker, N_STEPS, True, lookup_step=LOOKUP_STEP, feature_columns=FEATURE_COLUMNS, shuffle=False)
 
     # construct the model
     model = create_model(N_STEPS, loss=LOSS, units=UNITS, cell=CELL, n_layers=N_LAYERS,

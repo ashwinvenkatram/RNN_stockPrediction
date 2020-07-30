@@ -37,7 +37,7 @@ ax.autoscale_view(True,True,True)
 
 lineTest, = ax.plot(x_test,y_test, c='b',marker='.')#,marker="o", s=3)
 linePred, = ax.plot(x_testPred,y_predArr, c='r',marker='.')#, marker="o", s=3)
-lineTEMA, = ax.plot(x_TEMA,TEMAList, c='m',marker='.')
+# lineTEMA, = ax.plot(x_TEMA,TEMAList, c='m',marker='.')
 
 # def init():
 #     global startWindow, y_predArr
@@ -53,7 +53,7 @@ lineTEMA, = ax.plot(x_TEMA,TEMAList, c='m',marker='.')
 
 def animate(i):
     """perform animation step"""
-    global x_TEMA
+    # global x_TEMA
     model, endCheck = reinforcement()
 
     y_test = np.squeeze(data["column_scaler"]["close"].inverse_transform(np.expand_dims(data["y_test"], axis=0)))
@@ -63,14 +63,14 @@ def animate(i):
     print(np.shape(x_test),np.shape(y_test))
     print(np.shape(x_testPred),np.shape(y_predArr))
 
-    if len(y_predArr) >= EMA_SAMPLE_LENGTH:
-        TripleEMA(y_predArr)
-        x_TEMA = [tp for tp in range(len(TEMAList))]
-        print(np.shape(x_TEMA), np.shape(TEMAList))
+    # if len(y_predArr) >= EMA_SAMPLE_LENGTH:
+    #     TripleEMA(y_predArr)
+    #     x_TEMA = [tp for tp in range(len(TEMAList))]
+    #     print(np.shape(x_TEMA), np.shape(TEMAList))
 
     lineTest.set_data(x_test, y_test)
     linePred.set_data(x_testPred, y_predArr)
-    lineTEMA.set_data(x_TEMA, TEMAList)
+    # lineTEMA.set_data(x_TEMA, TEMAList)
 
 
 
@@ -107,14 +107,14 @@ def animate(i):
                 outfile.write(rowData)
         outfile.close()
 
-        with open(f"./reinforcement/{ticker}/logs/logfile_TEMA.csv","a") as outfile:
-            header = "x_TEMA, TEMAList" + "\n"
-            outfile.write(header)
-
-            for row in range(len(x_TEMA)):
-                rowData = f"{x_TEMA[row]}, {TEMAList[row]}" + "\n"
-                outfile.write(rowData)
-        outfile.close()
+        # with open(f"./reinforcement/{ticker}/logs/logfile_TEMA.csv","a") as outfile:
+        #     header = "x_TEMA, TEMAList" + "\n"
+        #     outfile.write(header)
+        #
+        #     for row in range(len(x_TEMA)):
+        #         rowData = f"{x_TEMA[row]}, {TEMAList[row]}" + "\n"
+        #         outfile.write(rowData)
+        # outfile.close()
 
         sys.exit()
     return lineTest, linePred

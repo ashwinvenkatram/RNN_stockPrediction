@@ -9,10 +9,10 @@ N_STEPS = 70
 LOOKUP_STEP = 1
 
 # test ratio size, 0.2 is 20%
-TEST_SIZE = 0.3
+TEST_SIZE = 0.2
 # features to use
 # FEATURE_COLUMNS = ["adjclose", "volume", "open", "high", "low"]
-FEATURE_COLUMNS = ["open", "high", "low", "close","nextopen"]
+FEATURE_COLUMNS = ["open", "high", "low", "close","volume","nextopen"]
 # date now
 date_now = date.today()#time.strftime("%Y-%m-%d")
 
@@ -37,7 +37,7 @@ CELL = CuDNNLSTM
 # 256 LSTM neurons
 UNITS = 256
 # 40% dropout
-DROPOUT = 0.4
+DROPOUT = 0.2
 # whether to use bidirectional RNNs
 BIDIRECTIONAL = False
 
@@ -48,17 +48,17 @@ BIDIRECTIONAL = False
 # huber loss
 LOSS = "huber_loss"
 OPTIMIZER = "adam"
-BATCH_SIZE = 64
-EPOCHS = 400
+BATCH_SIZE = 70
+EPOCHS = 300
 
 # Ticker Information
 MOD_SETTING = f"OHLCO-{TEST_SIZE}-"
-ticker = "TVIX" # HTZ, IZEA, DAL, NE
+ticker = "BRK-B" # HTZ, IZEA, DAL, NE
 ticker_data_filename = os.path.join("data", f"{ticker}_{date_now}.csv")
 # model name to save, making it as unique as possible based on parameters
-date_old = "2020-06-20"
-model_name = f"{MOD_SETTING}-{date_old}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
-# model_name = f"{MOD_SETTING}-{date_now}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
+# date_old = "2020-06-20"
+# model_name = f"{MOD_SETTING}-{date_old}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
+model_name = f"{MOD_SETTING}-{date_now}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
 # model_name = f"{MOD_SETTING}-2020-06-17_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
 
 # EMA Settings

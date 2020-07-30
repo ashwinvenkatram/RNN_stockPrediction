@@ -23,7 +23,7 @@ if not os.path.isdir("data"):
 if not os.path.isdir(os.path.join("logs/", model_name)):
     os.mkdir(os.path.join("logs/", model_name))
 # load the data
-data = load_data(ticker, N_STEPS, lookup_step=LOOKUP_STEP, test_size=TEST_SIZE, feature_columns=FEATURE_COLUMNS)
+data = load_data(ticker, N_STEPS, lookup_step=LOOKUP_STEP, test_size=TEST_SIZE, feature_columns=FEATURE_COLUMNS, shuffle=False)
 
 # save the dataframe
 data["df"].to_csv(ticker_data_filename)
