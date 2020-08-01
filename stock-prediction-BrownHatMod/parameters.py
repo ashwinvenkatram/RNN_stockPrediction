@@ -12,7 +12,7 @@ LOOKUP_STEP = 1
 TEST_SIZE = 0.2
 # features to use
 # FEATURE_COLUMNS = ["adjclose", "volume", "open", "high", "low"]
-FEATURE_COLUMNS = ["open", "high", "low", "close","volume","nextopen"]
+FEATURE_COLUMNS = ["open", "high", "low", "close","volume"]
 # date now
 date_now = date.today()#time.strftime("%Y-%m-%d")
 
@@ -52,7 +52,7 @@ BATCH_SIZE = 70
 EPOCHS = 300
 
 # Ticker Information
-MOD_SETTING = f"OHLCO-{TEST_SIZE}-"
+MOD_SETTING = f"OHLCO-STAN-"
 ticker = "BRK-B" # HTZ, IZEA, DAL, NE
 ticker_data_filename = os.path.join("data", f"{ticker}_{date_now}.csv")
 # model name to save, making it as unique as possible based on parameters

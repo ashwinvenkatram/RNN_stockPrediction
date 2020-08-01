@@ -32,16 +32,30 @@ def plot_graph(y_pred, y_test, r2_score):
     #         outfile.write(f"{x_val[i]},{y_pred[i]}"+"\n")
     # outfile.close()
 
-    # pickle.dump(figTest, open(OUTPUT_PATH +'_pred_vs_real' + '.pickle', 'wb'))
-    # plt.savefig(OUTPUT_PATH +'_pred_vs_real' + '.png')
+    pickle.dump(figTest, open(OUTPUT_PATH +'_pred_vs_real' + '.pickle', 'wb'))
+    plt.savefig(OUTPUT_PATH +'_pred_vs_real' + '.png')
     plt.show()
 
 
 def prediction(model, X_test, y_test,dataset):
     y_pred = model.predict(X_test)
-    print(len(X_test), len(y_pred))
-    y_test = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(np.expand_dims(y_test, axis=0)))
-    y_pred = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(y_pred))
+    # print(len(X_test), len(y_pred))
+    # y_test = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(np.expand_dims(y_test, axis=0)))
+    # y_pred = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(y_pred))
+
+    # invert close normalization process
+    y_test = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(np.expand_dims(y_test, axis=0)))
+    y_pred = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(y_pred))
+
+    # df['Close_logDiff'] = np.log(df['Close'.lower()]) - np.log(df['Close'.lower()]).shift(1)
+
+    # non-stationary conversion
+    y_test = np.exp(y_test + np.log(dataset["y_test_logDiffClose"]))
+    y_pred = np.exp(y_pred + np.log(dataset["y_test_logDiffClose"]))
+
+    # Removing NaN
+    y_test = y_test[~np.isnan(y_test)]
+    y_pred = y_pred[~np.isnan(y_pred)]
 
     return y_test, y_pred
 
@@ -59,8 +73,11 @@ def get_accuracy(model, dataset):
     y_test = dataset["y_test"]
     X_test = dataset["X_test"]
     y_pred = model.predict(X_test)
-    y_test = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(np.expand_dims(y_test, axis=0)))
-    y_pred = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(y_pred))
+    # y_test = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(np.expand_dims(y_test, axis=0)))
+    # y_pred = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(y_pred))
+    y_test = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(np.expand_dims(y_test, axis=0)))
+    y_pred = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(y_pred))
+
     y_pred = list(map(lambda current, future: int(float(future) > float(current)), y_test[:-LOOKUP_STEP], y_pred[LOOKUP_STEP:]))
     y_test = list(map(lambda current, future: int(float(future) > float(current)), y_test[:-LOOKUP_STEP], y_test[LOOKUP_STEP:]))
     return sqrt(mean_squared_error(y_test, y_pred))
@@ -74,6 +91,7 @@ def calcR2(y_test,y_pred):
     E5 = np.sum(np.multiply(y_pred, y_pred)) # sum of squares of y
 
     R2 = ((n*E1) - (E2 * E3))/(np.sqrt((n*E4 - np.power(E2,2)) * (n*E5 - np.power(E3,2))))
+
     return R2
 # def predict(model, data, classification=False):
 #     # retrieve the last sequence from data
