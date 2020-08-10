@@ -1,4 +1,5 @@
 from statsmodels.tsa.stattools import adfuller
+from heikenAshi import *
 
 import tensorflow as tf
 # from tensorflow.keras.models import Sequential
@@ -58,11 +59,13 @@ def load_data(ticker, n_steps=50, scale=True, shuffle=True, lookup_step=1,
     else:
         df = tickerData.history(start=STARTDATE, end=ENDDATE,interval=INTERVAL)
 
-
+    df.insert(column='date', value=df.index.copy(), loc=0)
     # make sure that the passed feature_columns exist in the dataframe
     df.columns = [c.lower() for c in df.columns] # converting all to lower case
     for col in feature_columns:
         assert col.lower() in df.columns, f"'{col.lower()}' does not exist in the dataframe/feature columns."
+
+    df = compute_heikenAshi(df)
 
     # Subtract previous data from current data by shifting the column down by 1
     df['Open_logDiff'] = np.log(df['Open'.lower()]) - np.log(df['Open'.lower()]).shift(1)
@@ -95,7 +98,7 @@ def load_data(ticker, n_steps=50, scale=True, shuffle=True, lookup_step=1,
 
     # add the target column (label) by shifting by `lookup_step`
     df['future'] = df['Close_logDiff'].shift(-lookup_step)
-
+    
     last_sequence = np.array(df[feature_columns].tail(lookup_step))
 
     # drop NaNs

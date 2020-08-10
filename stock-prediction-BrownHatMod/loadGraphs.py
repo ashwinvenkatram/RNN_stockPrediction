@@ -17,7 +17,7 @@ BATCH_SIZE = params["batch_size"]
 
 mainDir = "./results/"
 # figTrain = 'OHLCO-2020-06-16_HTZ-huber_loss-adam-CuDNNLSTM-seq-70-step-1-layers-3-units-256_LossEpoch.pickle'
-figTest = 'OHLCO-0.2--2020-07-31_BRK-B-huber_loss-adam-CuDNNLSTM-seq-70-step-1-layers-3-units-256_pred_vs_real.pickle'
+figTest = 'OHLCO-STAN-HA--2020-08-01_BRK-B-huber_loss-adam-CuDNNLSTM-seq-70-step-1-layers-3-units-256_pred_vs_real.pickle'
 
 
 # figTrain = pickle.load(open(mainDir + figTrain, 'rb'))

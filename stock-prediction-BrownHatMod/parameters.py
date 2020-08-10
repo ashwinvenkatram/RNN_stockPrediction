@@ -52,8 +52,8 @@ BATCH_SIZE = 70
 EPOCHS = 300
 
 # Ticker Information
-MOD_SETTING = f"OHLCO-STAN-"
-ticker = "BRK-B" # HTZ, IZEA, DAL, NE
+MOD_SETTING = f"OHLCO-STAN-HA-"
+ticker = "BTC-USD" # HTZ, IZEA, DAL, NE
 ticker_data_filename = os.path.join("data", f"{ticker}_{date_now}.csv")
 # model name to save, making it as unique as possible based on parameters
 # date_old = "2020-06-20"
@@ -66,7 +66,7 @@ EMA_SAMPLE_LENGTH = 9
 startWindow = 0
 
 # Backtest params
-COMMISSION = 0.01
+COMMISSION = 0.001
 MARGIN = 1.0
 DECISIONTYPE = 0
 
