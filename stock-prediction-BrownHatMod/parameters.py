@@ -66,7 +66,7 @@ EMA_SAMPLE_LENGTH = 9
 startWindow = 0
 
 # Backtest params
-COMMISSION = 0.001
+COMMISSION = 0.001 # not in percentage
 MARGIN = 1.0
 DECISIONTYPE = 0
 
