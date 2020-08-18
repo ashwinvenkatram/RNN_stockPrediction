@@ -1,6 +1,8 @@
 from statsmodels.tsa.stattools import adfuller
 from heikenAshi import *
 
+from binancePull import get_all_binance
+
 import tensorflow as tf
 # from tensorflow.keras.models import Sequential
 # from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional
@@ -26,7 +28,7 @@ tf.random.set_seed(314)
 random.seed(314)
 
 # FOR STATIONARY INPUT DATASET
-def load_data(ticker, n_steps=50, scale=True, shuffle=True, lookup_step=1,
+def load_data(ticker, n_steps=50, scale=True, shuffle=False, lookup_step=1,
                 test_size=0.2, feature_columns=['close', 'volume', 'open', 'high', 'low']):
     """
     Loads data from Yahoo Finance source, as well as scaling, shuffling, normalizing and splitting.
@@ -39,33 +41,45 @@ def load_data(ticker, n_steps=50, scale=True, shuffle=True, lookup_step=1,
         test_size (float): ratio for test data, default is 0.2 (20% testing data)
         feature_columns (list): the list of features to use to feed into the model, default is everything grabbed from yahoo_fin
     """
-    # see if ticker is already a loaded stock from yahoo finance
-    if isinstance(ticker, str):
-        # load it from yahoo_fin library
-        # df = si.get_data(ticker)
-        tickerData = Ticker(ticker)
-    elif isinstance(ticker, pd.DataFrame):
-        # already loaded, use it directly
-        tickerData = ticker
-    else:
-        raise TypeError("ticker can be either a str or a `pd.DataFrame` instances")
+    '''
+    FOR YAHOO DATA PULLING
+    '''
+    # # see if ticker is already a loaded stock from yahoo finance
+    # if isinstance(ticker, str):
+    #     # load it from yahoo_fin library
+    #     # df = si.get_data(ticker)
+    #     tickerData = Ticker(ticker)
+    # elif isinstance(ticker, pd.DataFrame):
+    #     # already loaded, use it directly
+    #     tickerData = ticker
+    # else:
+    #     raise TypeError("ticker can be either a str or a `pd.DataFrame` instances")
+    #
+    # # this will contain all the elements we want to return from this function
+    # result = {}
+    # # we will also return the original dataframe itself
+    #
+    # if PERIOD=="max":
+    #     df = tickerData.history(period=PERIOD)
+    # else:
+    #     df = tickerData.history(start=STARTDATE, end=ENDDATE,interval=INTERVAL)
 
-    # this will contain all the elements we want to return from this function
+
+    '''
+    FOR BINANCE DATA PULLING
+    '''
+    df = get_all_binance(ticker, INTERVAL, save=False)
     result = {}
-    # we will also return the original dataframe itself
-
-    if PERIOD=="max":
-        df = tickerData.history(period=PERIOD)
-    else:
-        df = tickerData.history(start=STARTDATE, end=ENDDATE,interval=INTERVAL)
-
+    '''
+    REST OF CODE
+    '''
     df.insert(column='date', value=df.index.copy(), loc=0)
     # make sure that the passed feature_columns exist in the dataframe
     df.columns = [c.lower() for c in df.columns] # converting all to lower case
     for col in feature_columns:
         assert col.lower() in df.columns, f"'{col.lower()}' does not exist in the dataframe/feature columns."
 
-    df = compute_heikenAshi(df)
+    # df = compute_heikenAshi(df)
 
     # Subtract previous data from current data by shifting the column down by 1
     df['Open_logDiff'] = np.log(df['Open'.lower()]) - np.log(df['Open'.lower()]).shift(1)
@@ -82,8 +96,10 @@ def load_data(ticker, n_steps=50, scale=True, shuffle=True, lookup_step=1,
     df = df[~df.isin([np.nan, np.inf, -np.inf]).any(1)]
     df.dropna(inplace=True)
 
+    # contains the full datafram of OHLCV and computing stationary dataset
     result['df'] = df.copy()
 
+    # scaling to normalize stationary dataset from 0 to 1
     if scale:
         column_scaler = {}
         # scale the data (prices) from 0 to 1
@@ -98,7 +114,7 @@ def load_data(ticker, n_steps=50, scale=True, shuffle=True, lookup_step=1,
 
     # add the target column (label) by shifting by `lookup_step`
     df['future'] = df['Close_logDiff'].shift(-lookup_step)
-    
+
     last_sequence = np.array(df[feature_columns].tail(lookup_step))
 
     # drop NaNs
@@ -107,6 +123,10 @@ def load_data(ticker, n_steps=50, scale=True, shuffle=True, lookup_step=1,
     sequence_data = []
     sequences = deque(maxlen=n_steps)
     # [df['future'].values, df['Close'.lower()].shift(-lookup_step)]
+    # entry: input to RNN, stationary and normalized OHLCV
+    # target: groundtruth close data (stationary and normalized) -> C_sn
+    # target2: groundtruth close data (ha close or close depending on setting) -> C
+
     for entry, target, target2 in zip(df[feature_columns].values, df['future'].values,  df['Close'.lower()].shift(-lookup_step)):
         sequences.append(entry)
         if len(sequences) == n_steps:
@@ -123,6 +143,8 @@ def load_data(ticker, n_steps=50, scale=True, shuffle=True, lookup_step=1,
 
     # construct the X's and y's
     X, y = [], []
+    # X: input OHLCV_logDiff and normalized
+    # Y: (C_sn, C)
     for seq, target, target2 in sequence_data:
         X.append(seq)
         y.append([target, target2])
@@ -142,14 +164,22 @@ def load_data(ticker, n_steps=50, scale=True, shuffle=True, lookup_step=1,
     # print("y_train shape: ", result["y_train"].shape)
     # print("y_test shape: ", result["y_test"].shape)
 
-    result["y_train_logDiffClose"] = result["y_train"][:,1]
-    result["y_train"] = result["y_train"][:,0]
+    result["y_train_logDiffClose"] = result["y_train"][:,1] # shifted close data for recalculation of actual close
+    result["y_train"] = result["y_train"][:,0] # stationary and normalized data
 
-    result["y_test_logDiffClose"] = result["y_test"][:, 1]
-    result["y_test"] = result["y_test"][:, 0]
+    result["y_test_logDiffClose"] = result["y_test"][:, 1] # shifted close data for recalculation of actual close
+    result["y_test"] = result["y_test"][:, 0] # stationary and normalized data
+
+    # Assuming not shuffled
+    testDataset = pd.DataFrame()
+    testDataset['open'] = result['df']['open'][-len(result["y_test"]):]
+    testDataset['high'] = result['df']['high'][-len(result["y_test"]):]
+    testDataset['low'] = result['df']['low'][-len(result["y_test"]):]
+    testDataset['close'] = result['df']['close'][-len(result["y_test"]):]
+    testDataset['volume'] = result['df']['volume'][-len(result["y_test"]):]
 
     # return the result
-    return result
+    return result, testDataset
 
 # For non stationary input dataset
 # def load_data(ticker, n_steps=50, scale=True, shuffle=True, lookup_step=1,

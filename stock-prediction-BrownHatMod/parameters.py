@@ -17,7 +17,7 @@ FEATURE_COLUMNS = ["open", "high", "low", "close","volume"]
 date_now = date.today()#time.strftime("%Y-%m-%d")
 
 ### yfinance dateframe
-PERIOD = "10y" # Anything that is not max will use start and end date as string
+PERIOD = "max" # Anything that is not max will use start and end date as string
                # Valid periods are: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max
 
 INTERVAL = "1h" #Valid intervals are: 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo
@@ -28,9 +28,8 @@ if PERIOD != "max":
         STARTDATE = ENDDATE - timedelta(729) # Only last 730 days are available on smaller intervals
     else:
         STARTDATE = "2017-01-01"
+
 ### model parameters
-
-
 N_LAYERS = 3 # 3 works for most. Attempting 10 for TVIX
 # LSTM cell
 CELL = CuDNNLSTM
@@ -52,14 +51,16 @@ BATCH_SIZE = 70
 EPOCHS = 300
 
 # Ticker Information
-MOD_SETTING = f"OHLCO-STAN-HA-"
-ticker = "BTC-USD" # HTZ, IZEA, DAL, NE
+MOD_SETTING = f"OHLCO-STAN-" #f"OHLCO-STAN-HA-"
+ticker = "BTCUSDT" # HTZ, IZEA, DAL, NE
 ticker_data_filename = os.path.join("data", f"{ticker}_{date_now}.csv")
 # model name to save, making it as unique as possible based on parameters
 # date_old = "2020-06-20"
 # model_name = f"{MOD_SETTING}-{date_old}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
-model_name = f"{MOD_SETTING}-{date_now}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
+# model_name = f"{MOD_SETTING}-{date_now}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
 # model_name = f"{MOD_SETTING}-2020-06-17_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
+
+model_name = "OHLCO-STAN--2020-08-18_BTCUSDT-huber_loss-adam-CuDNNLSTM-seq-70-step-1-layers-3-units-256"
 
 # EMA Settings
 EMA_SAMPLE_LENGTH = 9

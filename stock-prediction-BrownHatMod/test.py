@@ -5,6 +5,7 @@ from sklearn.metrics import accuracy_score, mean_squared_error
 
 import pickle
 import numpy as np
+import pandas as pd
 from math import sqrt
 
 import sys
@@ -67,6 +68,15 @@ def slidingWindowPred(model, dataset):
     # r2_score = get_accuracy(model, data)
     r2_score = calcR2(y_testInv,y_predInv)
     print("R2 Score:", r2_score)
+
+    # saving OHLCV and predClose to csv
+    y_predInvSave = np.append(y_predInv, [0])
+    # print(testDataset.shape, len(y_predInv2))
+    testDataset['predClose'] = y_predInvSave
+    testDataset.drop(testDataset.tail(1).index, inplace=True)  # drop last n rows
+    filename = './backtest/BTCUSDT/BTCUSDT_OHLCVpC.csv'
+    testDataset.to_csv(filename)
+
     plot_graph(y_predInv, y_testInv, r2_score)
 
 def get_accuracy(model, dataset):
@@ -115,7 +125,7 @@ def calcR2(y_test,y_pred):
 
 
 # load the data
-data = load_data(ticker, N_STEPS, lookup_step=LOOKUP_STEP, test_size=TEST_SIZE,
+data, testDataset = load_data(ticker, N_STEPS, lookup_step=LOOKUP_STEP, test_size=TEST_SIZE,
                 feature_columns=FEATURE_COLUMNS, shuffle=False)
 
 

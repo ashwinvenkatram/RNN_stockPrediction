@@ -14,8 +14,10 @@ def plot(df):
     fig.show()
 
 def rm_nan(dataset):
-    OHEn = np.isnan(dataset)
-    dataset= dataset[~np.isnan(dataset)]
+    # s = pd.Series()
+    # OHEn = np.isnan(dataset)
+    OHEn = pd.isnull(dataset)
+    dataset= dataset[~pd.isnull(dataset)]
     return dataset, OHEn
 
 def correction(dataset, indexRm, labelname):
@@ -43,6 +45,12 @@ def compute_heikenAshi(df):
 
     open = (openshift + closeshift)/2
     open = open.to_numpy()
+    # print(df['open'].values)
+    # print(df['high'].values)
+    # print(df['low'].values)
+    # print(df['close'].values)
+    # print(df['volume'].values)
+
     close = (df['open'] + df['high'] + df['low'] + df['close'])/4
     high = df[['open','high','close']].max(axis=1)
     low = df[['open','low','close']].min(axis=1)
