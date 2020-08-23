@@ -25,7 +25,7 @@ def plot_graph(y_pred, y_test, r2_score):
     plt.xlabel("Days")
     plt.ylabel("Price")
     plt.legend(["Actual Price", "Predicted Price"])
-    plt.title("Price Prediction Accuracy, R2: " + str(r2_score))
+    plt.title("Training Set - Price Prediction Accuracy, R2: " + str(r2_score))
 
     # with open(f"results/prediction_{model_name}.csv",'w') as outfile:
     #     header = "x_val,y_pred\n"
@@ -34,8 +34,8 @@ def plot_graph(y_pred, y_test, r2_score):
     #         outfile.write(f"{x_val[i]},{y_pred[i]}"+"\n")
     # outfile.close()
 
-    pickle.dump(figTest, open(OUTPUT_PATH +'_pred_vs_real' + '.pickle', 'wb'))
-    plt.savefig(OUTPUT_PATH +'_pred_vs_real' + '.png')
+    pickle.dump(figTest, open(OUTPUT_PATH +'_training_pred_vs_real' + '.pickle', 'wb'))
+    plt.savefig(OUTPUT_PATH +'_training_pred_vs_real' + '.png')
     plt.show()
 
 
@@ -43,13 +43,16 @@ def prediction(model, X_test, y_test,dataset):
     y_pred = model.predict(X_test)
 
     # print(len(X_test), len(y_pred))
-    y_test = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(np.expand_dims(y_test, axis=0)))
-    y_pred = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(y_pred))
+    # y_test = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(np.expand_dims(y_test, axis=0)))
+    # y_pred = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(y_pred))
 
     # invert close normalization process
-    # scaler = pickle.load(open(os.path.join("results", 'scaler-'+model_name+'.pickle'),'rb'))
-    # y_test = np.squeeze(scaler.inverse_transform(np.expand_dims(y_test, axis=1)))
-    # y_pred = np.squeeze(scaler.inverse_transform(y_pred))
+    # load static minmaxscalar from file
+    column_scaler = pickle.load(open(os.path.join("results", 'scalerTrain-' + model_name + '.pickle'), 'rb'))
+    scaler = column_scaler["Close_logDiff"]
+
+    y_test = np.squeeze(scaler.inverse_transform(np.expand_dims(y_test, axis=1)))
+    y_pred = np.squeeze(scaler.inverse_transform(y_pred))
 
     # Shape of y_test: (5249,)
     # Shape of y_pred: (5249, 1)
@@ -77,7 +80,7 @@ def prediction(model, X_test, y_test,dataset):
 
     return y_test, y_pred
 
-def slidingWindowPred(model, dataset):
+def testSetPred(model, dataset, testDataset):
     y_test = dataset["y_test"]
     X_test = dataset["X_test"]
     y_testOriClose = testDataset['Close'].values # shift not necessary
@@ -85,6 +88,8 @@ def slidingWindowPred(model, dataset):
     # print(X_test.shape)
     y_testInv, y_predInv = prediction(model, X_test, y_test,dataset)
 
+    # print(len(y_testOriClose), len(y_predInv))
+    # sys.exit()
     # r2_score = get_accuracy(model, data)
     # r2_score = calcR2(y_testInv,y_predInv)
 
@@ -103,24 +108,23 @@ def slidingWindowPred(model, dataset):
 
     testDataset.dropna(inplace=True)
 
-    filename = './backtest/BTCUSDT/BTCUSDT_OHLCVpC.csv'
+    filename = './backtest/BTCUSDT/BTCUSDT_test_OHLCVpC.csv'
     testDataset.to_csv(filename)
-
     # plot_graph(y_predInv, y_testInv, r2_score)
     plot_graph(compDF['y_predInv'].values, compDF['close'].values, r2_score)
 
-def get_accuracy(model, dataset):
-    y_test = dataset["y_test"]
-    X_test = dataset["X_test"]
-    y_pred = model.predict(X_test)
-    # y_test = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(np.expand_dims(y_test, axis=0)))
-    # y_pred = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(y_pred))
-    y_test = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(np.expand_dims(y_test, axis=0)))
-    y_pred = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(y_pred))
-
-    y_pred = list(map(lambda current, future: int(float(future) > float(current)), y_test[:-LOOKUP_STEP], y_pred[LOOKUP_STEP:]))
-    y_test = list(map(lambda current, future: int(float(future) > float(current)), y_test[:-LOOKUP_STEP], y_test[LOOKUP_STEP:]))
-    return sqrt(mean_squared_error(y_test, y_pred))
+# def get_accuracy(model, dataset):
+#     y_test = dataset["y_test"]
+#     X_test = dataset["X_test"]
+#     y_pred = model.predict(X_test)
+#     # y_test = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(np.expand_dims(y_test, axis=0)))
+#     # y_pred = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(y_pred))
+#     y_test = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(np.expand_dims(y_test, axis=0)))
+#     y_pred = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(y_pred))
+#
+#     y_pred = list(map(lambda current, future: int(float(future) > float(current)), y_test[:-LOOKUP_STEP], y_pred[LOOKUP_STEP:]))
+#     y_test = list(map(lambda current, future: int(float(future) > float(current)), y_test[:-LOOKUP_STEP], y_test[LOOKUP_STEP:]))
+#     return sqrt(mean_squared_error(y_test, y_pred))
 
 def calcR2(y_test,y_pred):
     E1 = np.sum(np.multiply(y_test,y_pred)) # Sum(xy)
@@ -153,37 +157,18 @@ def calcR2(y_test,y_pred):
 #     predicted_price = column_scaler["close"].inverse_transform(prediction)
 #     return predicted_price
 
-# load the data
-data, testDataset = load_data(ticker, N_STEPS, lookup_step=LOOKUP_STEP, test_size=TEST_SIZE,
-                feature_columns=FEATURE_COLUMNS, shuffle=False)
+
+if __name__=="__main__":
+    # load the data
+    data, testDataset, valDataset = load_data(ticker, N_STEPS, lookup_step=LOOKUP_STEP, test_size=TEST_SIZE,
+                    feature_columns=FEATURE_COLUMNS, shuffle=False)
 
 
-# construct the model
-model = create_model(N_STEPS, loss=LOSS, units=UNITS, cell=CELL, n_layers=N_LAYERS,
-                    dropout=DROPOUT, optimizer=OPTIMIZER, bidirectional=BIDIRECTIONAL)
+    # construct the model
+    model = create_model(N_STEPS, loss=LOSS, units=UNITS, cell=CELL, n_layers=N_LAYERS,
+                        dropout=DROPOUT, optimizer=OPTIMIZER, bidirectional=BIDIRECTIONAL)
 
-model_path = os.path.join("results", model_name) + ".h5"
-model.load_weights(model_path)
+    model_path = os.path.join("results", model_name) + ".h5"
+    model.load_weights(model_path)
 
-# slidingWindowPred(model, data)
-slidingWindowPred(model, data)
-
-#  try test.py with marker ^ to mark buy/ sell conditions over time. visualize the system on test plot instead of backtest.plot()
-#  Correlation of pred with buy sell condition not clear
-
-# # evaluate the model
-# mse, mae = model.evaluate(data["X_test"], data["y_test"], verbose=0)
-# # calculate the mean absolute error (inverse scaling)
-#
-# mean_square_error = data["column_scaler"]["adjclose"].inverse_transform([[mse]])[0][0]
-# mean_absolute_error = data["column_scaler"]["adjclose"].inverse_transform([[mae]])[0][0]
-# print("Mean Absolute Error:", mean_absolute_error)
-# print("Mean Square Error:", mean_square_error)
-
-# predict the future price
-# future_price = predict(model, data)
-# print(future_price)
-# print(f"Future price after {LOOKUP_STEP} days is {future_price:.2f}$")
-# r2_score = get_accuracy(model, data)
-# print("R2 Score:", r2_score)
-# plot_graph(model, data, r2_score)
+    testSetPred(model, data, testDataset)

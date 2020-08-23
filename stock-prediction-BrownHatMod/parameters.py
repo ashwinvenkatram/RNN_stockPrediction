@@ -10,6 +10,8 @@ LOOKUP_STEP = 1
 
 # test ratio size, 0.2 is 20%
 TEST_SIZE = 0.2
+# validation dataset size, 0.2 is 20%
+VAL_SIZE = 0.2
 # features to use
 # FEATURE_COLUMNS = ["adjclose", "volume", "open", "high", "low"]
 FEATURE_COLUMNS = ["open", "high", "low", "close","volume"]
@@ -51,19 +53,15 @@ BATCH_SIZE = 70
 EPOCHS = 300
 
 # Ticker Information
-MOD_SETTING = f"OHLCV-STAN-AN-" #f"OHLCO-STAN-HA-"
+MOD_SETTING = f"OHLCV-STAN-wVALSET-staticMinMax" #f"OHLCO-STAN-HA-"
 ticker = "BTCUSDT" # HTZ, IZEA, DAL, NE
 ticker_data_filename = os.path.join("data", f"{ticker}_{date_now}.csv")
 # model name to save, making it as unique as possible based on parameters
-# date_old = "2020-06-20"
-# model_name = f"{MOD_SETTING}-{date_old}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
-model_name = f"{MOD_SETTING}-{date_now}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
-# model_name = f"{MOD_SETTING}-2020-06-17_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
+# model_name = f"{MOD_SETTING}-{date_now}_{ticker}-{LOSS}-{OPTIMIZER}-{CELL.__name__}-seq-{N_STEPS}-step-{LOOKUP_STEP}-layers-{N_LAYERS}-units-{UNITS}"
 
-# model_name = "OHLCO-STAN--2020-08-18_BTCUSDT-huber_loss-adam-CuDNNLSTM-seq-70-step-1-layers-3-units-256"
+model_name = f"{MOD_SETTING}_{ticker}"
 
-# EMA Settings
-EMA_SAMPLE_LENGTH = 9
+# sliding window
 startWindow = 0
 
 # Backtest params

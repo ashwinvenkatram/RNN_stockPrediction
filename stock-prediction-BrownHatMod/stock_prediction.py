@@ -1,5 +1,4 @@
-from statsmodels.tsa.stattools import adfuller
-from heikenAshi import *
+# from heikenAshi import *
 
 from binancePull import get_all_binance
 
@@ -12,12 +11,12 @@ from yahoo_fin import stock_info as si
 from yfinance import *
 from collections import deque
 
+import pickle
 import math
 import numpy as np
 import pandas as pd
 import random
 from parameters import *
-from pickle import dump
 import os
 from datetime import date, timedelta
 import sys
@@ -101,42 +100,53 @@ def load_data(ticker, n_steps=50, scale=True, shuffle=False, lookup_step=1,
     # contains the full dataframe of OHLCV after dropped datapoints and computing stationary dataset
     # result['df'] = df.copy()
 
-    # scaling to normalize stationary dataset from 0 to 1
-    if scale:
-        column_scaler = {}
-        # scale the data (prices) from 0 to 1
-        # feature_columns = ["Open_logDiff", "NextOpen_logDiff","High_logDiff", "Low_logDiff", "Close_logDiff","Volume_logDiff"]
-        feature_columns = ["Open_logDiff", "High_logDiff", "Low_logDiff", "Close_logDiff",
-                           "Volume_logDiff"]
-
-        scaler = preprocessing.MinMaxScaler()
-
-        for column in feature_columns:
-            scaler = preprocessing.MinMaxScaler()
-            df[column] = scaler.fit_transform(np.expand_dims(df[column].values, axis=1))
-            column_scaler[column] = scaler
-
-        # add the MinMaxScaler instances to the result returned
-        result["column_scaler"] = column_scaler
-        dump(scaler, open(os.path.join("results", 'scaler-' + model_name + '.pickle'), 'wb'))
-
     # add the target column (label) by shifting by `lookup_step`
     df['future'] = df['Close_logDiff'].shift(-LOOKUP_STEP)
+    df.dropna(inplace=True)
+
+    result, testDataset, valDataset = mydata_test_train_split(df, result, TEST_SIZE, VAL_SIZE)
+
+    # return the result
+    return result, testDataset, valDataset
+
+    # scaling to normalize stationary dataset from 0 to 1
+    # # scale only train and test set
+    # if scale:
+    #     column_scaler = {}
+    #     # scale the data (prices) from 0 to 1
+    #     # feature_columns = ["Open_logDiff", "NextOpen_logDiff","High_logDiff", "Low_logDiff", "Close_logDiff","Volume_logDiff"]
+    #     feature_columns = ["Open_logDiff", "High_logDiff", "Low_logDiff", "Close_logDiff",
+    #                        "Volume_logDiff"]
+    #
+    #     scaler = preprocessing.MinMaxScaler()
+    #
+    #     for column in feature_columns:
+    #         scaler = preprocessing.MinMaxScaler()
+    #         df[column] = scaler.fit_transform(np.expand_dims(df[column].values, axis=1))
+    #         column_scaler[column] = scaler
+    #
+    #     # add the MinMaxScaler instances to the result returned
+    #     result["column_scaler"] = column_scaler
+    #     dump(scaler, open(os.path.join("results", 'scaler-' + model_name + '.pickle'), 'wb'))
+
+    # # add the target column (label) by shifting by `lookup_step`
+    # df['future'] = df['Close_logDiff'].shift(-LOOKUP_STEP)
     # colsList = df.columns.tolist()
     # colsList = colsList.remove('date')
     # last_sequence = np.array(df[colsList].tail(lookup_step))
 
     # drop NaNs
     # df = df[~df.isin([np.nan, np.inf, -np.inf]).any(1)]
-    df.dropna(inplace=True)
+    # df.dropna(inplace=True)
 
     # At this point df of stationary OHLCV, groundtruth predClose has been created
-    dfTrain, dfTest = mydata_test_train_split(df, TEST_SIZE)
+    # dfTrain, dfTest, dfVal = mydata_test_train_split(df, result, TEST_SIZE, VAL_SIZE)
 
-    # contains the full dataframe of OHLCV after dropped datapoints and computing stationary dataset
-    result['df'] = df.copy()
-    result['dfTrain'] = dfTrain.copy()
-    result['dfTest'] = dfTest.copy()
+    # # contains the full dataframe of OHLCV after dropped datapoints and computing stationary dataset
+    # result['df'] = df.copy()
+    # result['dfTrain'] = dfTrain.copy()
+    # result['dfTest'] = dfTest.copy()
+    # result['dfVal'] = dfVal.copy()
 
     # scaling
     # if scale:
@@ -145,9 +155,10 @@ def load_data(ticker, n_steps=50, scale=True, shuffle=False, lookup_step=1,
     #
     #     dump(scaler, open(os.path.join("results", 'scaler-'+model_name+'.pickle'),'wb'))
 
-    # creating sequence data from stationary and scaled dataset
-    X_Train, Y_Train = create_sequence_data(dfTrain)
-    X_Test, Y_Test = create_sequence_data(dfTest)
+    # # creating sequence data from stationary and scaled dataset
+    # X_Train, Y_Train = create_sequence_data(dfTrain)
+    # X_Test, Y_Test = create_sequence_data(dfTest)
+    # X_Val, Y_Val = create_sequence_data(dfVal)
 
     # sequence_data = []
     # sequences = deque(maxlen=n_steps)
@@ -199,30 +210,42 @@ def load_data(ticker, n_steps=50, scale=True, shuffle=False, lookup_step=1,
     # result["y_test_logDiffClose"] = result["y_test"][:, 1] # shifted close data for recalculation of actual close
     # result["y_test"] = result["y_test"][:, 0] # stationary and normalized data
 
-    result["X_train"] = X_Train
-    result["y_train_logDiffClose"] = Y_Train[:, 1]  # shifted close data for recalculation of actual close
-    result["y_train"] = Y_Train[:, 0]  # stationary and normalized data
-
-    result["X_test"] = X_Test
-    result["y_test_logDiffClose"] = Y_Test[:, 1]  # shifted close data for recalculation of actual close
-    result["y_test"] = Y_Test[:, 0]  # stationary and normalized data
+    # result["X_train"] = X_Train
+    # result["y_train_logDiffClose"] = Y_Train[:, 1]  # shifted close data for recalculation of actual close
+    # result["y_train"] = Y_Train[:, 0]  # stationary and normalized data
+    #
+    # result["X_test"] = X_Test
+    # result["y_test_logDiffClose"] = Y_Test[:, 1]  # shifted close data for recalculation of actual close
+    # result["y_test"] = Y_Test[:, 0]  # stationary and normalized data
+    #
+    # result["X_val"] = X_Val
+    # result["y_val_logDiffClose"] = Y_Val[:, 1]  # shifted close data for recalculation of actual close
+    # result["y_val"] = Y_Val[:, 0]  # stationary and normalized data
 
     # Assuming not shuffled
     # picking up values after first 70 datapoints
-    testDataset = pd.DataFrame()
-    testDataset['Timestamp'] = result['df']['timestamp'][-len(result["y_test"]):]
-    testDataset['Open'] = result['df']['open'][-len(result["y_test"]):]
-    testDataset['High'] = result['df']['high'][-len(result["y_test"]):]
-    testDataset['Low'] = result['df']['low'][-len(result["y_test"]):]
-    testDataset['Close'] = result['df']['close'][-len(result["y_test"]):]
-    testDataset['Volume'] = result['df']['volume'][-len(result["y_test"]):]
+    # testDataset = pd.DataFrame()
+    # testDataset['Timestamp'] = result['df']['timestamp'][-len(result["y_test"]):]
+    # testDataset['Open'] = result['df']['open'][-len(result["y_test"]):]
+    # testDataset['High'] = result['df']['high'][-len(result["y_test"]):]
+    # testDataset['Low'] = result['df']['low'][-len(result["y_test"]):]
+    # testDataset['Close'] = result['df']['close'][-len(result["y_test"]):]
+    # testDataset['Volume'] = result['df']['volume'][-len(result["y_test"]):]
+    #
+    # valDataset = pd.DataFrame()
+    # valDataset['Timestamp'] = result['df']['timestamp'][-len(result["y_val"]):]
+    # valDataset['Open'] = result['df']['open'][-len(result["y_val"]):]
+    # valDataset['High'] = result['df']['high'][-len(result["y_val"]):]
+    # valDataset['Low'] = result['df']['low'][-len(result["y_val"]):]
+    # valDataset['Close'] = result['df']['close'][-len(result["y_val"]):]
+    # valDataset['Volume'] = result['df']['volume'][-len(result["y_val"]):]
 
-    # return the result
-    return result, testDataset
+    # # return the result
+    # return result, testDataset, valDataset
 
-def scalingTrain(dfTrain, result):
+def scalingTrainSet(df, result):
     column_scaler = {}
-        # scale the data (prices) from 0 to 1
+        # scale the training + testing data (prices) from 0 to 1
         # feature_columns = ["Open_logDiff", "NextOpen_logDiff","High_logDiff", "Low_logDiff", "Close_logDiff","Volume_logDiff"]
     feature_columns = ["Open_logDiff", "High_logDiff", "Low_logDiff", "Close_logDiff",
                            "Volume_logDiff", "future"]
@@ -231,23 +254,28 @@ def scalingTrain(dfTrain, result):
 
     for column in feature_columns:
         scaler = preprocessing.MinMaxScaler()
-        dfTrain[column] = scaler.fit_transform(np.expand_dims(dfTrain[column].values, axis=1))
+        df[column] = scaler.fit_transform(np.expand_dims(df[column].values, axis=1))
         column_scaler[column] = scaler
 
         # add the MinMaxScaler instances to the result returned
     result["column_scaler"] = column_scaler
-    return result, dfTrain, scaler
 
-def scalingTest(dfTest, scaler, result):
-    # scale the data (prices) from 0 to 1
+    pickle.dump(result["column_scaler"], open(os.path.join("results", 'scalerTrain-' + model_name + '.pickle'), 'wb'))
+
+    return result, df
+
+def scalingValSet(dfVal):
+    # apply scaling from train on validation data (prices) from 0 to 1
+    column_scaler = pickle.load(open(os.path.join("results", 'scalerTrain-' + model_name + '.pickle'), 'rb'))
+
     # feature_columns = ["Open_logDiff", "NextOpen_logDiff","High_logDiff", "Low_logDiff", "Close_logDiff","Volume_logDiff"]
     feature_columns = ["Open_logDiff", "High_logDiff", "Low_logDiff", "Close_logDiff",
                            "Volume_logDiff", "future"]
     for column in feature_columns:
-        dfTest[column] = scaler.transform(np.expand_dims(dfTest[column].values, axis=1))
+        scaler = column_scaler[column]
+        dfVal[column] = scaler.transform(np.expand_dims(dfVal[column].values, axis=1))
 
-    # add the MinMaxScaler instances to the result returned
-    return result, dfTest
+    return dfVal
 
 def create_sequence_data(df):
     sequence_data = []
@@ -280,14 +308,76 @@ def create_sequence_data(df):
     return X, y
 
 # dataset will be the full df. to be split into test and train respectively
-def mydata_test_train_split(dataset,test_size):
-    train_size = 1 - test_size
+def mydata_test_train_split(dataset,result, test_size, val_size):
+    train_size = 1 - test_size - val_size
     rows = dataset.shape[0]
 
     trainRows = math.floor(rows * train_size)
-    trainSet = dataset.copy()[:trainRows]
-    testSet = dataset.copy()[trainRows:]
-    return trainSet, testSet
+    testRows = math.floor(rows * (train_size+test_size))
+
+    # trainTest set includes training and testing data
+    trainTestSet = dataset.copy()[:testRows]
+
+    # performing minmax scaling on trainTest set
+    result, trainTestSet = scalingTrainSet(trainTestSet,result)
+
+    # separating train and test after scaling by minmaxscaler
+    trainSet = trainTestSet.copy()[:trainRows]
+    testSet = trainTestSet.copy()[trainRows-69:testRows]
+
+    # containts validation data
+    valSet = dataset.copy()[testRows-69:]
+
+    # applying train scaling to valSet; loads the minmax scalar from file
+    valSet = scalingValSet(valSet)
+
+    # contains the full dataframe of OHLCV after dropped datapoints and computing stationary dataset
+    result['df'] = dataset.copy()
+    result['dfTrain'] = trainSet.copy()
+    result['dfTest'] = testSet.copy()
+    result['dfVal'] = valSet.copy()
+
+    # creating sequence data from stationary and scaled dataset
+    X_Train, Y_Train = create_sequence_data(trainSet)
+    X_Test, Y_Test = create_sequence_data(testSet)
+    X_Val, Y_Val = create_sequence_data(valSet)
+
+    result["X_train"] = X_Train
+    result["y_train_logDiffClose"] = Y_Train[:, 1]  # shifted close data for recalculation of actual close
+    result["y_train"] = Y_Train[:, 0]  # stationary and normalized data
+
+    result["X_test"] = X_Test
+    result["y_test_logDiffClose"] = Y_Test[:, 1]  # shifted close data for recalculation of actual close
+    result["y_test"] = Y_Test[:, 0]  # stationary and normalized data
+
+    result["X_val"] = X_Val
+    result["y_val_logDiffClose"] = Y_Val[:, 1]  # shifted close data for recalculation of actual close
+    result["y_val"] = Y_Val[:, 0]  # stationary and normalized data
+
+    testDataset = pd.DataFrame()
+    # testDataset['Timestamp'] = dataset['timestamp'][trainRows-69:trainRows+len(Y_Test)-69]
+    # testDataset['Open'] = dataset['open'][trainRows-69:trainRows+len(Y_Test)-69]
+    # testDataset['High'] = dataset['high'][trainRows-69:trainRows+len(Y_Test)-69]
+    # testDataset['Low'] = dataset['low'][trainRows-69:trainRows+len(Y_Test)-69]
+    # testDataset['Close'] = dataset['close'][trainRows-69:trainRows+len(Y_Test)-69]
+    # testDataset['Volume'] = dataset['volume'][trainRows-69:trainRows+len(Y_Test)-69]
+
+    testDataset['Timestamp'] = dataset['timestamp'][trainRows:trainRows + len(Y_Test) ]
+    testDataset['Open'] = dataset['open'][trainRows :trainRows + len(Y_Test) ]
+    testDataset['High'] = dataset['high'][trainRows :trainRows + len(Y_Test) ]
+    testDataset['Low'] = dataset['low'][trainRows :trainRows + len(Y_Test) ]
+    testDataset['Close'] = dataset['close'][trainRows :trainRows + len(Y_Test) ]
+    testDataset['Volume'] = dataset['volume'][trainRows :trainRows + len(Y_Test) ]
+
+    valDataset = pd.DataFrame()
+    valDataset['Timestamp'] = dataset['timestamp'][-len(Y_Val):]
+    valDataset['Open'] = dataset['open'][-len(Y_Val):]
+    valDataset['High'] = dataset['high'][-len(Y_Val):]
+    valDataset['Low'] = dataset['low'][-len(Y_Val):]
+    valDataset['Close'] = dataset['close'][-len(Y_Val):]
+    valDataset['Volume'] = dataset['volume'][-len(Y_Val):]
+
+    return result, testDataset, valDataset
 
 # For non stationary input dataset
 # def load_data(ticker, n_steps=50, scale=True, shuffle=True, lookup_step=1,
