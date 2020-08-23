@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score, mean_squared_error
 
 import pickle
+
 import numpy as np
 import pandas as pd
 from math import sqrt
@@ -40,44 +41,73 @@ def plot_graph(y_pred, y_test, r2_score):
 
 def prediction(model, X_test, y_test,dataset):
     y_pred = model.predict(X_test)
-    # print(len(X_test), len(y_pred))
-    # y_test = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(np.expand_dims(y_test, axis=0)))
-    # y_pred = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(y_pred))
 
-    # invert close normalization process
+    # print(len(X_test), len(y_pred))
     y_test = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(np.expand_dims(y_test, axis=0)))
     y_pred = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(y_pred))
+
+    # invert close normalization process
+    # scaler = pickle.load(open(os.path.join("results", 'scaler-'+model_name+'.pickle'),'rb'))
+    # y_test = np.squeeze(scaler.inverse_transform(np.expand_dims(y_test, axis=1)))
+    # y_pred = np.squeeze(scaler.inverse_transform(y_pred))
+
+    # Shape of y_test: (5249,)
+    # Shape of y_pred: (5249, 1)
+    # array([[0.557144 ],
+    #        [0.557144 ],
+    #        [0.557144 ],
+    #        ...,
+    #        [0.557144 ],
+    #        [0.557144 ],
+    #        [0.5571439]], dtype=float32)
+    # Hence expand dimensions along column => axis = 1
+    # y_test = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(np.expand_dims(y_test, axis=1)))
+    # y_pred = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(y_pred))
 
     # df['Close_logDiff'] = np.log(df['Close'.lower()]) - np.log(df['Close'.lower()]).shift(1)
 
     # non-stationary conversion
+    # y_pred = np.squeeze(y_pred)
     y_test = np.exp(y_test + np.log(dataset["y_test_logDiffClose"]))
     y_pred = np.exp(y_pred + np.log(dataset["y_test_logDiffClose"]))
 
     # Removing NaN
-    y_test = y_test[~np.isnan(y_test)]
-    y_pred = y_pred[~np.isnan(y_pred)]
+    # y_test = y_test[~np.isnan(y_test)]
+    # y_pred = y_pred[~np.isnan(y_pred)]
 
     return y_test, y_pred
 
 def slidingWindowPred(model, dataset):
     y_test = dataset["y_test"]
     X_test = dataset["X_test"]
+    y_testOriClose = testDataset['Close'].values # shift not necessary
+
+    # print(X_test.shape)
     y_testInv, y_predInv = prediction(model, X_test, y_test,dataset)
 
     # r2_score = get_accuracy(model, data)
-    r2_score = calcR2(y_testInv,y_predInv)
+    # r2_score = calcR2(y_testInv,y_predInv)
+
+    # Comparing pred with original untouched close data
+    r2_score = calcR2(y_testOriClose, y_predInv)
     print("R2 Score:", r2_score)
 
     # saving OHLCV and predClose to csv
-    y_predInvSave = np.append(y_predInv, [0])
-    # print(testDataset.shape, len(y_predInv2))
-    testDataset['predClose'] = y_predInvSave
-    testDataset.drop(testDataset.tail(1).index, inplace=True)  # drop last n rows
+    compDF = pd.DataFrame()
+    compDF.insert(column='close', value=y_testOriClose, loc=len(compDF.columns))
+    compDF.insert(column='y_predInv', value=y_predInv, loc=len(compDF.columns))
+    # OHLCV, nextPredClose for purpose of backtesting
+
+    testDataset['predClose'] = compDF['y_predInv'].values
+    testDataset['predClose'] = testDataset['predClose'].shift(-1) # For Pranav to compare each close with corresponding next close
+
+    testDataset.dropna(inplace=True)
+
     filename = './backtest/BTCUSDT/BTCUSDT_OHLCVpC.csv'
     testDataset.to_csv(filename)
 
-    plot_graph(y_predInv, y_testInv, r2_score)
+    # plot_graph(y_predInv, y_testInv, r2_score)
+    plot_graph(compDF['y_predInv'].values, compDF['close'].values, r2_score)
 
 def get_accuracy(model, dataset):
     y_test = dataset["y_test"]
@@ -122,7 +152,6 @@ def calcR2(y_test,y_pred):
 #     # predicted_price = column_scaler["close"].inverse_transform(prediction)[0][0]
 #     predicted_price = column_scaler["close"].inverse_transform(prediction)
 #     return predicted_price
-
 
 # load the data
 data, testDataset = load_data(ticker, N_STEPS, lookup_step=LOOKUP_STEP, test_size=TEST_SIZE,

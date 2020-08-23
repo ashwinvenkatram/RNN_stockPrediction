@@ -1,452 +1,177 @@
-from stock_prediction import create_model, load_data, np
-from parameters import *
-import matplotlib.pyplot as plt
-from sklearn.metrics import accuracy_score, mean_squared_error
+from stock_prediction import create_model
 
+from statsmodels.tsa.stattools import adfuller
+from heikenAshi import *
+
+from binancePull import get_all_binance
+import math
+import tensorflow as tf
+# from tensorflow.keras.models import Sequential
+# from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional
+from sklearn import preprocessing
+from sklearn.model_selection import train_test_split
+from yahoo_fin import stock_info as si
+from yfinance import *
+from collections import deque
 import pickle
 import numpy as np
-from math import sqrt
-
-import backtest
-import sys
-import os
-
 import pandas as pd
+import os
+import random
+from parameters import *
+from datetime import date, timedelta
+import sys
+
+from tensorflow.compat.v1.keras.metrics import RootMeanSquaredError, MeanAbsoluteError
+from tensorflow.compat.v1.keras.models import Sequential, load_model, save_model
+from tensorflow.compat.v1.keras.layers import CuDNNLSTM, Dense, Dropout, Flatten
+
+from stock_prediction import mydata_test_train_split, create_sequence_data
+
+# FOR STATIONARY INPUT DATASET
+def load_data(ticker, n_steps=50, scale=True, shuffle=False, lookup_step=1,
+                test_size=0.2, feature_columns=['close', 'volume', 'open', 'high', 'low']):
+    """
+    Loads data from Yahoo Finance source, as well as scaling, shuffling, normalizing and splitting.
+    Params:
+        ticker (str/pd.DataFrame): the ticker you want to load, examples include AAPL, TESL, etc.
+        n_steps (int): the historical sequence length (i.e window size) used to predict, default is 50
+        scale (bool): whether to scale prices from 0 to 1, default is True
+        shuffle (bool): whether to shuffle the data, default is True
+        lookup_step (int): the future lookup step to predict, default is 1 (e.g next day)
+        test_size (float): ratio for test data, default is 0.2 (20% testing data)
+        feature_columns (list): the list of features to use to feed into the model, default is everything grabbed from yahoo_fin
+    """
+
+    '''
+    FOR BINANCE DATA PULLING
+    '''
+    df = get_all_binance(ticker, INTERVAL, save=True)
+    result = {}
+    '''
+    REST OF CODE
+    '''
+    df.insert(column='date', value=df.index.copy(), loc=0)
+    # make sure that the passed feature_columns exist in the dataframe
+    df.columns = [c.lower() for c in df.columns] # converting all to lower case
+    for col in feature_columns:
+        assert col.lower() in df.columns, f"'{col.lower()}' does not exist in the dataframe/feature columns."
+
+    # df = compute_heikenAshi(df)
+
+    # Subtract previous data from current data by shifting the column down by 1
+    df['Open_logDiff'] = np.log(df['Open'.lower()]) - np.log(df['Open'.lower()]).shift(1)
+    df['Close_logDiff'] = np.log(df['Close'.lower()]) - np.log(df['Close'.lower()]).shift(1)
+    df['High_logDiff'] = np.log(df['High'.lower()]) - np.log(df['High'.lower()]).shift(1)
+    df['Low_logDiff'] = np.log(df['Low'.lower()]) - np.log(df['Low'.lower()]).shift(1)
+    df['Volume_logDiff'] = np.log(df['volume'.lower()]) - np.log(df['volume'.lower()]).shift(1)
+
+    # shiftedOpen = df['Open_logDiff'].shift(-lookup_step)
+    # df.insert(column='NextOpen_logDiff', value=shiftedOpen, loc=len(df.columns))
+
+    # drop =/- inf by setting to NaN
+    df = df[~df.isin([np.nan, np.inf, -np.inf]).any(1)]
+    df.dropna(inplace=True)
+
+    if scale:
+        column_scaler = {}
+        # scale the data (prices) from 0 to 1
+        # feature_columns = ["Open_logDiff", "NextOpen_logDiff","High_logDiff", "Low_logDiff", "Close_logDiff","Volume_logDiff"]
+        feature_columns = ["Open_logDiff", "High_logDiff", "Low_logDiff", "Close_logDiff",
+                           "Volume_logDiff"]
+
+        # scaler = preprocessing.MinMaxScaler()
+        scaler = pickle.load(open(os.path.join("results", 'scaler-'+model_name+'.pickle'),'rb'))
+        for column in feature_columns:
+            df[column] = scaler.transform(np.expand_dims(df[column].values, axis=1))
+            column_scaler[column] = scaler
+
+        # add the MinMaxScaler instances to the result returned
+        result["column_scaler"] = column_scaler
+        # dump(scaler, open(os.path.join("results", 'scaler-' + model_name + '.pickle'), 'wb'))
+
+    # add the target column (label) by shifting by `lookup_step`
+    df['future'] = df['Close_logDiff'].shift(-LOOKUP_STEP)
+
+    # drop NaNs
+    df.dropna(inplace=True)
+
+    # At this point df of stationary OHLCV, groundtruth predClose has been created
+    dfTrain, dfTest = mydata_test_train_split(df, TEST_SIZE)
+
+    # contains the full dataframe of OHLCV after dropped datapoints and computing stationary dataset
+    result['df'] = df.copy()
+    result['dfTrain'] = dfTrain.copy()
+    result['dfTest'] = dfTest.copy()
+
+    # creating sequence data from stationary and scaled dataset
+    X_Train, Y_Train = create_sequence_data(dfTrain)
+    X_Test, Y_Test = create_sequence_data(dfTest)
+
+
+    result["X_train"] = X_Train
+    result["y_train_logDiffClose"] = Y_Train[:, 1]  # shifted close data for recalculation of actual close
+    result["y_train"] = Y_Train[:, 0]  # stationary and normalized data
+
+    result["X_test"] = X_Test
+    result["y_test_logDiffClose"] = Y_Test[:, 1]  # shifted close data for recalculation of actual close
+    result["y_test"] = Y_Test[:, 0]  # stationary and normalized data
+
+    # Assuming not shuffled
 
-global model, processed
-
-y_predArr = []
-startWindow = 0
-prevState = 1
-# 1: Sell (currently out of market)
-# 0: Buy (currently in market)
-waitCount = 0
-logData = []
-buySellTriggers = []
-
-if DECISIONTYPE == 0:
-    DECTYPE = "predClose-nextOpen"
-    header = "Date,waitCount,State,NextOpen,prevPredClose,predClose,delta\n"
-elif DECISIONTYPE == 1:
-    DECTYPE = "predClose-prevClose"
-    header = "Date,waitCount,State,NextOpen,prevClose,predClose,delta\n"
-elif DECISIONTYPE == 2:
-    DECTYPE = "predClose-prevPredClose"
-    header = "Date,waitCount,State,NextOpen,predClose,prevPredClose,delta\n"
-elif DECISIONTYPE == 3:
-    DECTYPE = "predClose-currOpen"
-    header = "Date,waitCount,State,currOpen,predClose,prevPredClose,delta\n"
-
-def plot_graph(y_pred, y_test, buySellTriggers, r2_score):
-    OUTPUT_PATH = f"./backtest/{ticker}/BACKTEST-{DECTYPE}-" + model_name
-
-    figTest = plt.figure()
-    plt.style.use('seaborn-whitegrid')
-    x_valTest = [i for i in range(len(y_test))]
-    x_valPred = [i for i in range(len(y_pred))]
-    plt.scatter(x_valTest,y_test[:], c='b',marker="o", s=3)
-    plt.scatter(x_valPred,y_pred[:], c='r', marker="o", s=3)
-    plt.plot(y_test[:], 'b')
-    plt.plot(y_pred[:], 'r')
-
-    x_coorBuy = []
-    y_coorBuy = []
-    x_coorSell = []
-    y_coorSell = []
-
-    for elem in buySellTriggers:
-        markDay = elem[0]
-        stateType = elem[1]
-
-        # print(len(x_valTest), len(x_valPred), markDay)
-        try:
-            if stateType==0:
-                x_coorBuy.append(x_valTest[markDay])
-                y_coorBuy.append(y_test[markDay] - 5)
-            elif stateType==1:
-                x_coorSell.append(x_valTest[markDay])
-                y_coorSell.append(y_test[markDay] + 5)
-        except IndexError:
-            pass
-    # print(len(x_coorBuy), len(y_coorBuy))
-    # print(len(x_coorSell), len(y_coorSell))
-    plt.scatter(x_coorBuy,y_coorBuy, c='g', marker="^", s=50)
-    plt.scatter(x_coorSell, y_coorSell, c='m', marker="v", s=50)
-
-    plt.xlabel("Time Step")
-    plt.ylabel("Price")
-    plt.legend(["Actual Price", "Predicted Price"])
-    plt.title("Price Prediction Accuracy, R2: " + str(r2_score))
-
-    # with open(f"results/prediction_{model_name}.csv",'w') as outfile:
-    #     header = "x_val,y_pred\n"
-    #     outfile.write(header)
-    #     for i in range(len(x_val)):
-    #         outfile.write(f"{x_val[i]},{y_pred[i]}"+"\n")
-    # outfile.close()
-
-    pickle.dump(figTest, open(OUTPUT_PATH + '.pickle', 'wb'))
-    # plt.savefig(OUTPUT_PATH + '.png')
-    plt.show()
-
-
-# def prediction(model, X_test, y_test,dataset):
-#     y_pred = model.predict(X_test)
-#     print(len(X_test), len(y_pred))
-#     y_test = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(np.expand_dims(y_test, axis=0)))
-#     y_pred = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(y_pred))
-#
-#     return y_test, y_pred
-
-def predictionBacktest():
-    global startWindow # slideWindowX,slideWindowY
-    global model, y_predArr, processed
-
-    # if startWindow % 70 == 0:
-    #     y_predArr = []
-
-    slideWindowX = processed["X_test"][startWindow:startWindow + 70]
-    slideWindowY = processed["y_test"][startWindow:startWindow + 70]
-    # checkpointer = ModelCheckpoint(os.path.join("results", model_name + ".h5"), save_weights_only=True,
-    #                                save_best_only=True, verbose=1)
-    # tensorboard = TensorBoard(log_dir=os.path.join("logs/", model_name))
-
-    # if len(slideWindowX) < 70:
-    #     print("end of dataset reached\n")
-    #     endCheck = 1
-    # else:
-    #     model.fit(slideWindowX, slideWindowY,
-    #               batch_size=BATCH_SIZE,
-    #               epochs=1,
-    #               verbose=1)
-
-    y_pred = model.predict(slideWindowX)
-    y_pred = processed["column_scaler"]["close"].inverse_transform(y_pred)[0][0]
-    y_predArr.append(y_pred)
-    startWindow = startWindow + 1
-
-    try:
-        slideWindowX = processed["X_test"][startWindow:startWindow + 70]
-        slideWindowY = processed["y_test"][startWindow:startWindow + 70]
-        endCheck = 0
-    except IndexError:
-        print("end of dataset reached\n")
-        endCheck = 1
-
-    return model, endCheck
-
-
-class brownHatStrategy:
-
-    def __init__(self, checkflag = 0, cash= float(10000), commission = float(.0)):
-        global model, startWindow
-
-        numtrades = {"Buy": 0, "Sell": 0, "Total": 0}
-
-        historyDF = pd.DataFrame(columns=['Iter_Count', 'BuyDate', 'BuyPrice','SellDate','SellPrice','UnitsPurchased','PLpercent', 'GainLoss', 'NetCash'])
-
-        # tradedata = {"Iter Count": 0,"Buy Date": "", "Buy Price": 0, "Sale Date": "", "Sell Price": 0, "Units Purchased": 0., "P/L%": 0}
-        # history = []
-        percentChange = []
-        self.checkFlag = checkflag
-        self.numTrades = numtrades
-        self.cash = cash
-        # self.startSum = cash
-        self.commission = commission
-        # self.tradeData = tradedata
-        self.historydF = historyDF
-        self.percentChange = percentChange
-        self.currIndex = 0
-        # equity = [100 * (self.cash - self.startSum) / self.startSum]
-        # self.equity = equity  # in percentage
-        # construct the model
-        model = create_model(N_STEPS, loss=LOSS, units=UNITS, cell=CELL, n_layers=N_LAYERS,
-                             dropout=DROPOUT, optimizer=OPTIMIZER, bidirectional=BIDIRECTIONAL)
-
-        model_path = os.path.join("results", model_name) + ".h5"
-        model.load_weights(model_path)
-        startWindow = 0
-
-    def transaction(self, wCount, date, buySell, pricePoint):
-        self.update_numTrades(buySell)
-        if buySell==0:
-            (units,remainder) = divmod(self.cash,pricePoint)
-            # self.history["UnitsPurchased"] = units
-            self.cash = remainder
-            # self.tradeData["Buy Price"] = pricePoint
-            # self.tradeData["Buy Date"] = date
-            # self.tradeData["Iter Count"] = wCount
-            self.historydF = self.historydF.append({'Iter_Count': wCount, 'BuyDate': date, 'BuyPrice': pricePoint,'SellDate': date, 'SellPrice': pricePoint, 'UnitsPurchased': units, 'PLpercent': 0, 'GainLoss': 0, 'NetCash': 0}, ignore_index=True)
-            self.currIndex = len(self.historydF.index) - 1
-
-        elif buySell==1:
-            # columns=['Iter_Count', 'BuyDate', 'BuyPrice','SellDate','SellPrice','UnitsPurchased','P/L%', '$Gain/Loss', 'NetCash']
-
-            # sys.exit()
-            retAmt = pricePoint * self.historydF.iloc[self.currIndex, 5]
-            self.cash = self.cash + retAmt
-
-            # self.tradeData["Sell Price"] = pricePoint
-            # self.tradeData["Sale Date"] = date
-            # self.tradeData["P/L%"] = 100 * (self.tradeData["Sell Price"] - self.tradeData["Buy Price"])/self.tradeData["Buy Price"]
-            # self.tradeData["Iter Count"] = wCount
-
-            # self.history.append(self.tradeData)
-            self.historydF.iloc[self.currIndex, 3] = date
-            self.historydF.iloc[self.currIndex, 4] = pricePoint
-            self.historydF.iloc[self.currIndex, 8] = retAmt
-
-            sellPrice = self.historydF.iloc[self.currIndex, 4]
-            buyPrice = self.historydF.iloc[self.currIndex, 2]
-            PL = 100 * (sellPrice - buyPrice)/buyPrice
-
-            self.historydF.iloc[self.currIndex, 6] = PL
-
-
-            prevCash = self.historydF.iloc[self.currIndex-1, 8]
-            cashGainLoss = retAmt - prevCash
-
-            self.historydF.iloc[self.currIndex, 7] = cashGainLoss
-
-            # self.update_equity()
-
-            print(waitCount, self.historydF.iloc[self.currIndex])
-            # self.reset_tradeData()
-
-    def equityFinal(self):
-        return self.historydF.iloc[len(self.historydF.index) - 1, 8]
-
-    # def reset_tradeData(self):
-    #     tradedata = {"Buy Date": "", "Buy Price": 0, "Sale Date": "", "Sell Price": 0, "Units Purchased": 0, "P/L%": 0}
-    #     self.tradeData = tradedata
-
-    # Should equity be a percentage? updated in an array for every timestep???
-    # def update_equity(self):
-    #     self.equity.append(100 * (self.historydF.iloc[self.currIndex, 8] - self.startSum)/self.startSum)
-
-    def set_flag(self, checkFlag):
-        self.checkFlag = checkFlag
-
-    def set_numTrades(self):
-        self.numTrades["Buy"] = 0
-        self.numTrades["Sell"] = 0
-        self.numTrades["Total"] = 0
-
-    def update_numTrades(self, buySell):
-        if buySell==0:
-            self.numTrades["Buy"] = self.numTrades["Buy"] + 1
-            self.numTrades["Total"] = self.numTrades["Total"] + 1
-        elif buySell==1:
-            self.numTrades["Sell"] = self.numTrades["Sell"] + 1
-            self.numTrades["Total"] = self.numTrades["Total"] + 1
-
-    def get_numTrades(self):
-        return self.numTrades
-
-    def get_flag(self):
-        return self.checkFlag
-
-    def get_history(self):
-        return self.historydF
-
-    def next(self):
-        global model, prevState, waitCount, processed
-        try:
-            if waitCount >= 69:
-                currOpen = processed["df"]["Open"][startWindow + 70]  # 0 based, 70th index is 71st data point; outside of the sliding window setup
-                nextOpen = processed["df"]["NextOpen"][startWindow+70] # 0 based, 70th index is 71st data point; outside of the sliding window setup
-                actualClose = processed["df"]["Close"][startWindow+70] # startWindow iterates in prediction()
-                date = processed["df"]["date"][startWindow+70]
-
-                model, endCheck = predictionBacktest()
-
-                self.set_flag(endCheck)
-
-                predClose = y_predArr[-1]
-                if len(y_predArr) >= 2:
-                    prevPredClose = 0 #y_predArr[-2]
-                    prevClose = 0 #processed["df"]["Close"][startWindow+69]
-
-                    # print("Open: ", nextOpen, "Pred Close: ", predClose, "Actual Close: ",actualClose)
-
-                    if DECISIONTYPE == 0:
-                        delta = 100 * (predClose - nextOpen)/nextOpen
-                        pricePoint = nextOpen
-                    elif DECISIONTYPE == 1:
-                        delta = 100 * (predClose - prevClose) / prevClose
-                        pricePoint = prevClose
-                    elif DECISIONTYPE == 2:
-                        delta = 100 * (predClose - prevPredClose) / prevPredClose
-                        pricePoint = prevPredClose
-                    elif DECISIONTYPE == 3:
-                        delta = 100 * (predClose - currOpen) / currOpen
-                        pricePoint = currOpen
-                    else:
-                        print("Select 0,1,2,3")
-                        sys.exit()
-
-                    if delta > 0.1 and prevState == 1:
-                        # self.buy()
-                        prevState = 0
-                        print("waitCount:", waitCount, "Decision:", prevState, "startWindow:" , startWindow)
-                        buySellTriggers.append([waitCount,prevState])
-
-                        self.transaction(waitCount, date, prevState, pricePoint)
-
-                        # logFormat(prevState, date, waitCount, currOpen, nextOpen, prevPredClose,predClose,prevClose, actualClose, delta)
-                        # logData.append(str(date) + str(waitCount) + ",Buy," + str(currOpen) + "," + str(prevPredClose) + "," + str(predClose) + "," + str(delta) + "\n")
-                    elif delta < -0.1 and prevState==0:
-                        # self.sell()
-                        prevState = 1
-                        print("waitCount:", waitCount, "Decision:", prevState, "startWindow:" , startWindow)
-                        buySellTriggers.append([waitCount, prevState])
-
-                        self.transaction(waitCount, date, prevState, pricePoint)
-
-                        # logFormat(prevState, date, waitCount, currOpen, nextOpen, prevPredClose,predClose,prevClose, actualClose, delta)
-                        # logData.append(str(date) + str(waitCount)  + ",Sell," + str(currOpen) + "," + str(prevPredClose) + "," + str(predClose) + "," + str(delta) + "\n")
-                    else:
-                        print("waitCount:", waitCount, " Holding...", "startWindow:" , startWindow)
-                        # logFormat(2, date, waitCount, currOpen, nextOpen, prevPredClose,predClose,prevClose, actualClose, delta)
-                        # logData.append(str(date) + str(waitCount)  + ",Hold," + str(currOpen) + "," + str(prevPredClose) + "," + str(predClose) + "," + str(delta) + "\n")
-                        pass
-                    waitCount = waitCount + 1
-            else:
-                waitCount = waitCount + 1
-                print("Iter:", waitCount, " Waiting...")
-                # logData.append("Iter: " + str(waitCount) + " Waiting...\n")
-
-
-        except IndexError:
-            print("Time to break out...")
-            self.set_flag(1)
-            pass
-
-def logFormat(prevState, date, waitCount, currOpen, nextOpen, prevPredClose,predClose,prevClose, actualClose, delta):
-    if prevState==0:
-        buySellTrig = "Buy"
-    elif prevState==1:
-        buySellTrig = "Sell"
-    else:
-        buySellTrig = "Hold"
-
-    if DECISIONTYPE == 0:
-        logData.append(str(date) + "," + str(waitCount) + "," + str(buySellTrig) + "," + str(nextOpen) + "," + str(prevPredClose) + "," + str(predClose) + "," + str(delta) + "\n")
-
-    elif DECISIONTYPE == 1:
-        logData.append(str(date) + "," + str(waitCount) + "," + str(buySellTrig) + "," + str(nextOpen) + "," + str(prevClose) + "," + str(predClose) + "," + str(delta) + "\n")
-    elif DECISIONTYPE == 2:
-        logData.append(str(date) + "," + str(waitCount) + "," + str(buySellTrig) + "," + str(nextOpen) + "," + str(predClose) + "," + str(prevPredClose) + "," + str(delta) + "\n")
-    elif DECISIONTYPE == 3:
-        logData.append(str(date) + "," + str(waitCount) + "," + str(buySellTrig) + "," + str(currOpen) + "," + str(predClose) + "," + str(actualClose) + "," + str(delta) + "\n")
-
-def slidingWindowPred(dataset):
-    y_test = dataset["y_test"]
-    X_test = dataset["X_test"]
-    # y_testInv, y_predInv = prediction(model, X_test, y_test,dataset)
-
-    bt = brownHatStrategy()
-    bt.set_flag(0)
-
-    while not bt.get_flag():
-        bt.next()
-    # r2_score = get_accuracy(model, data)
-    y_test = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(np.expand_dims(y_test, axis=0)))
-
-    # r2_score = calcR2(y_testInv,y_predInv)
-    r2_score = calcR2(y_test, y_predArr)
-
-    print("R2 Score:", r2_score)
-
-    tradingStats(bt)
-
-    fileName = f"./backtest/{ticker}/testBacktestLogs-{DECTYPE}.csv"
-
-    with open(fileName, "w") as outfile:
-        outfile.write(header)
-        for row in logData:
-            outfile.write(row)
-    outfile.close()
-
-    plot_graph(y_test, y_predArr, buySellTriggers, r2_score)
-
-
-def tradingStats(bt):
-    tradeHistory = bt.get_history()
-    lastCount = len(y_predArr)
-    max_drawdown = min(tradeHistory.PLpercent)
-
-    tradeHistoryFilt = tradeHistory[tradeHistory.Iter_Count <= lastCount] # filtering out the excess trades that seem to trigger with < 70 sliding window
-
-    equityDollars = tradeHistoryFilt.iloc[-1,8]
-
-
-    numTradeStats = bt.get_numTrades()
-
-    tradeHistoryFilt.to_csv(f"./backtest/{ticker}/testBacktestTradeLog-{DECTYPE}.csv")
-    print("Equity [$]:", equityDollars)
-    print("Max Drawdown:", max_drawdown)
-    print("# Trades:", numTradeStats["Total"])
-
-
-
-def get_accuracy(model, dataset):
-    y_test = dataset["y_test"]
-    X_test = dataset["X_test"]
-    y_pred = model.predict(X_test)
-    y_test = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(np.expand_dims(y_test, axis=0)))
-    y_pred = np.squeeze(dataset["column_scaler"]["close"].inverse_transform(y_pred))
-    y_pred = list(map(lambda current, future: int(float(future) > float(current)), y_test[:-LOOKUP_STEP], y_pred[LOOKUP_STEP:]))
-    y_test = list(map(lambda current, future: int(float(future) > float(current)), y_test[:-LOOKUP_STEP], y_test[LOOKUP_STEP:]))
-    return sqrt(mean_squared_error(y_test, y_pred))
-
-def calcR2(y_test,y_pred):
-    E1 = np.sum(np.multiply(y_test,y_pred)) # Sum(xy)
-    E2 = np.sum(y_test) # Sum of all x
-    E3 = np.sum(y_pred) # Sum of all y
-    n = len(y_pred)
-    E4 = np.sum(np.multiply(y_test,y_test)) # Sum of squares of x
-    E5 = np.sum(np.multiply(y_pred, y_pred)) # sum of squares of y
-
-    R2 = ((n*E1) - (E2 * E3))/(np.sqrt((n*E4 - np.power(E2,2)) * (n*E5 - np.power(E3,2))))
-    return R2
-# def predict(model, data, classification=False):
-#     # retrieve the last sequence from data
-#     last_sequence = data["last_sequence"][:N_STEPS]
-#     print("last_sequence: ", last_sequence)
-#     # retrieve the column scalers
-#     column_scaler = data["column_scaler"]
-#
-#     # reshape the last sequence
-#     last_sequence = last_sequence.reshape((last_sequence.shape[1], last_sequence.shape[0]))
-#
-#     # expand dimension
-#     last_sequence = np.expand_dims(last_sequence, axis=0)
-#
-#     # get the prediction (scaled from 0 to 1)
-#     prediction = model.predict(last_sequence)
-#     # get the price (by inverting the scaling)
-#     # predicted_price = column_scaler["close"].inverse_transform(prediction)[0][0]
-#     predicted_price = column_scaler["close"].inverse_transform(prediction)
-#     return predicted_price
+    testDataset = pd.DataFrame()
+    testDataset['open'] = result['dfTest']['open']
+    testDataset['high'] = result['dfTest']['high']
+    testDataset['low'] = result['dfTest']['low']
+    testDataset['close'] = result['dfTest']['close']
+    testDataset['volume'] = result['dfTest']['volume']
+
+    # return the result
+    return result, testDataset
 
 if __name__=="__main__":
-    if not os.path.isdir("backtest"):
-        os.mkdir("backtest")
-
-    if not os.path.isdir(f"backtest/{ticker}"):
-        os.mkdir(f"backtest/{ticker}")
-# load the data
-# data = load_data(ticker, N_STEPS, lookup_step=LOOKUP_STEP, test_size=TEST_SIZE,
-#                 feature_columns=FEATURE_COLUMNS, shuffle=False)
-    data, processed = backtest.load_data(ticker, N_STEPS, True, lookup_step=LOOKUP_STEP, feature_columns=FEATURE_COLUMNS)
+    # load the data
+    dataset, testDataset = load_data(ticker, N_STEPS, lookup_step=LOOKUP_STEP, test_size=TEST_SIZE,
+                                  feature_columns=FEATURE_COLUMNS, shuffle=False)
 
     # construct the model
-    # model = create_model(N_STEPS, loss=LOSS, units=UNITS, cell=CELL, n_layers=N_LAYERS,
-    #                     dropout=DROPOUT, optimizer=OPTIMIZER, bidirectional=BIDIRECTIONAL)
-    #
-    # model_path = os.path.join("results", model_name) + ".h5"
-    # model.load_weights(model_path)
+    model = create_model(N_STEPS, loss=LOSS, units=UNITS, cell=CELL, n_layers=N_LAYERS,
+                         dropout=DROPOUT, optimizer=OPTIMIZER, bidirectional=BIDIRECTIONAL)
 
-    # slidingWindowPred(model, data)
-    slidingWindowPred(processed)
+    model_path = os.path.join("results", model_name) + ".h5"
+    model.load_weights(model_path)
+
+    # startWindow = len(dataset["X_Test"])-15 # start prediction for last 15
+
+    # log dataframe
+    logData = pd.DataFrame()
+    closeData = np.array([])
+    predCloseData = np.array([])
+
+    # for i in range(10): # math.floor(len(dataset["X_test"])/70)
+    # slideWindowX = np.array([dataset["X_test"][startWindow]])
+    # actualClose = testDataset["close"][startWindow + 70]
+
+    y_pred = model.predict(dataset["X_test"])
+
+
+    y_pred = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(y_pred))
+    y_pred = np.exp(y_pred + np.log(dataset["y_test_logDiffClose"]))
+
+    y_test = dataset["y_test"]
+    y_test = np.squeeze(dataset["column_scaler"]["Close_logDiff"].inverse_transform(np.expand_dims(y_test, axis=1)))
+    y_test = np.exp(y_test + np.log(dataset["y_test_logDiffClose"][startWindow + 69: startWindow+75]))
+
+    closeData = np.append(closeData, actualClose)
+    predCloseData = np.append(predCloseData, y_pred)
+
+    startWindow = startWindow + 1
+
+    # logData["Date"] = testDataset.index[:10]
+    logData.insert(column='close', value=closeData, loc=len(logData.columns))
+    logData.insert(column='predClose', value=predCloseData, loc=len(logData.columns))
+    # logData["close"] = closeData
+    # logData["predClose"] = predCloseData
+
+    filename = './backtest/BTCUSDT/BTCUSDT_TEST_LOGFILE.csv'
+    logData.to_csv(filename)

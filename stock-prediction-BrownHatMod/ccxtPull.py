@@ -28,7 +28,7 @@ def importHistorialData(binanceObj, tickerSymbol, timeInterval):
 
 def cryptoData(exchangeId,tickerSymbol, timeInterval):
     try:
-        binanceObj = getattr(ccxt,exchangeId)
+        binanceObj = ccxt.binance() #getattr(ccxt,exchangeId)
         marketsBinance = binanceObj.load_markets()
 
         if tickerSymbol in marketsBinance.keys():
