@@ -14,8 +14,8 @@ import sys
 ### API
 # bitmex_api_key = '[REDACTED]'    #Enter your own API-key here
 # bitmex_api_secret = '[REDACTED]' #Enter your own API-secret here
-binance_api_key = '67mZqjB2V6YE6Ouag1bkbG13BkU7RPJQTGJ6bpbRstHDqtXjFO6z3qCSLQW6wVKW'    #Enter your own API-key here
-binance_api_secret = 'OVhky8dFSoz341a3EDfYgwRz05qOgiV3Q2zpOqOsTu1NbBTzfY8fSgN943lSSTGu' #Enter your own API-secret here
+binance_api_key = ''    #Enter your own API-key here
+binance_api_secret = '' #Enter your own API-secret here
 
 ### CONSTANTS
 binsizes = {"1m": 1, "5m": 5, "1h": 60, "1d": 1440}
